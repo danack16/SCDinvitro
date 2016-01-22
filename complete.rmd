@@ -30,39 +30,31 @@ Next, trying to extract different patterns for different lipids.
 lipidtype<- as.data.frame(str_match(comb1$Label, "^(.*)\\((.*)"))
 comb2<- merge(comb1, lipidtype[,1:2], by.x= "Label", by.y = "V1")
 liplist1<- split(comb2, comb2$V2)
-CL1<- c("ChE")
-CL2<- c("PC", "PS", "SM", "Cer", "DG", "PE", "PG", "PI")
-CL3<- c("TG")
-
 del.V2<- function(df){
   df$V2<- NULL
   df
   }
 liplist2<-lapply(liplist1, del.V2)
 
-##function: calculate chain length
-##takes dataframe, assesses if name %in% CL1, CL2, CL3
-##split $Label into component parts
-## merge back with original dataset
-CL1.split<- function(df){
-  FA1chain<- as.data.frame(str_match(df$Label,
-            "^(.*)\\(([0-9]{1,2}):([0-9])\\)"))
-  colnames(FA1chain)<- c("Label", "Species", "ch1", "ch1DBs")
-  merge(df, FA1chain, by="Label")
-}
+# classifying lipids by number of FA chains
+CL1<- c("ChE")
+CL2<- c("PC", "PS", "SM", "Cer", "DG", "PE", "PG", "PI")
+CL3<- c("TG")
 
+# creating vector of chain lengths by lipid type
+chain_no<- c(rep(NA, length(liplist2)))
+names(chain_no)<-names(liplist2)
+chain_no[names(liplist2) %in% CL1]<- "CL1"
+chain_no[names(liplist2) %in% CL2]<- "CL2"
+chain_no[names(liplist2) %in% CL3]<- "CL3"
 
-names(liplist1)
-chain_no<- c(rep(NA, length(liplist1)))
-chain_no[names(liplist1) %in% CL1]<- "CL1"
-chain_no[names(liplist1) %in% CL2]<- "CL2"
-chain_no[names(liplist1) %in% CL3]<- "CL3"
-
-
+# creating strings for str_match function to interpret lipid name
   cl1_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\)"
   cl2_ch<- "^(.*)\\(([:alpha:]{0,1})([0-9]{1,2}):([0-9])([ep]{0,1})\\/([0-9]{1,2}):([0-9])\\)"
   cl3_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\/([0-9]{1,2}):([0-9])/([0-9]{1,2}):([0-9])\\)"
   
+# creating function that interprets lipid name and breaks it down
+# uses different strings for different lipids
 CL.split<- function(df, cl){
   if(cl=="CL1"){
     chains<- cl1_ch
@@ -85,75 +77,90 @@ CL.split<- function(df, cl){
 }
 
 
-d<- Map(CL.split, liplist1, chain_no)
+satlist1<- Map(CL.split, liplist2, chain_no) #applying function to list
 #b<-d[["PC"]]
 
  
 ```
 
+Next, adding total amount of lipid with differnt levels of saturation
 
 ```{r}
-num.col<- function(vec){
-    vec<- as.numeric(as.character(vec))
-    vec[is.na(vec)]<- 0
-    vec
+
+require(data.table); require(tidyr)
+tot.unsat2<- function(df, cl){
+    if (!"ch1DBs" %in% names(df)){
+    stop("df must contain ch1DBs column")
   }
+  exclude<- c('Label',"ch1", "ch1DBs", "Species")
+  if(cl=="CL1"){
+    df$unsat<- as.numeric(as.character(df$ch1DBs))
+  }
+  if(cl=="CL2"){
+    df$unsat<- as.numeric(as.character(df$ch1DBs))+as.numeric(as.character(df$ch2DBs))
+    exclude<- c(exclude, c("ch2", "ch2DBs", "Add1", "Add2"))
+  }
+    if(cl=="CL3"){
+    df$unsat<- as.numeric(as.character(df$ch1DBs))+as.numeric(as.character(df$ch2DBs))
+    exclude<- c(exclude, c("ch2", "ch2DBs", "ch3", "ch3DBs"))
+    }
+   df2<-setDT(df)[,lapply(.SD, sum), by=unsat, .SDcols=-exclude]
+   df2
+}
 
-comb2$ch1 <- num.col(comb2$ch1)
-comb2$ch1DBs <- num.col(comb2$ch1DBs)
-comb2$ch2 <- num.col(comb2$ch2)
-comb2$ch2DBs <- num.col(comb2$ch2DBs)
-comb2$ch3 <- num.col(comb2$ch3)
-comb2$ch3DBs <- num.col(comb2$ch3DBs)
-comb2$unsat<-  comb2$ch1DBs+comb2$ch2DBs+comb2$ch3DBs
-#apply(comb2, 2, class)  ## very strange- class() gives different result thab str() in terms of class of the columns
+satlist2<- Map(tot.unsat2, satlist1, chain_no)
 
-library(data.table)
-comb3<-setDT(comb2)[,lapply(.SD, sum), by=.(Species, unsat), .SDcols=-c('Label',"ch1", "ch1DBs", "Add1", "Add2", "ch2", "ch2DBs", "ch3","ch3DBs")]
-require(tidyr)
-long1<-  gather(comb3, Sample, Measurement, 3:length(colnames(comb3)))
 ```
 
 
 Next, I would like to divide each value by the total amount of that particular lipid species in that sample.
 
 ```{r}
-sum1<-long1%>% group_by(Species, Sample)%>% summarise(total = sum(Measurement))
+# scaling each sample to look at distribution of each lipid as percentage shift
+# does not take into account changes in abundance of different lipid species across groups
+
+scal<- function(DAT){
+  x<-DAT$unsat
+  nms<- colnames(DAT)
+  df2<-sweep(DAT,2,colSums(DAT), "/")
+  df2$unsat<- x
+  colnames(df2)<- nms
+  df2[order(df2$unsat),]
+}
+satlist3<- lapply(satlist2, scal)
 
 
-for (i in 1:dim(long1)[1])
-{
-  long1$total[i]<-sum1$total[sum1$Species==long1$Species[i] & sum1$Sample==long1$Sample[i]]
-  #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
 
-}  
-
-long1$ratio<- long1$Measurement/long1$total
-
-# checking that ratios add up to 1
-#checkratio<- long1%>% group_by(Species, Sample)%>% summarise(total = sum(ratio))
 ```
 
-Need to identify the average of the untreated group for each comparison and subtract that value from the treatment. In most cases, this will involve subtracting the average of the DMSO treated group from the SCDi treated group. Also will be interested in looking at the effect of Dox/DGAT knockdown in both 5% serum grou and 0.5% serum group. 
+Next, center to look at effect of a treatment on distribution as shift
 
 
 ```{r}
-Unique<- unique(long1$Sample)
-samp_split<- as.data.frame(str_match(Unique, "^(.)-([:upper:]{3})_([:alpha:]{3,4})_([:digit:])"))
-colnames(samp_split)<- c("Sample", "Serum", "Dox", "Inh", "Replicate")
-long2<-merge(long1, samp_split, by="Sample")
 
-#creating lookup table for 
-long2_ctrl<- long2%>% filter(Inh=="Veh")%>% group_by(Species, unsat, Serum, Dox)%>% summarise(ctrl_mean = mean(ratio))
-
-
-for (i in 1:dim(long2)[1])
-{
-  long2$ctrl[i]<-long2_ctrl$ctrl_mean[long2_ctrl$Species==long2$Species[i] &  long2_ctrl$unsat==long2$unsat[i] &long2_ctrl$Serum==long2$Serum[i] & long2_ctrl$Dox==long2$Dox[i]]
-  #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
+cntr<- function(df, controls){
+  # takes a dataframe and a vector of sample names
+  # calculates mean of each saturatio value across control samples
+  # subtracts mean from all values
+  
 }
 
-long2$subtr<- long2$ratio- long2$ctrl
+# Unique<- unique(long1$Sample)
+# samp_split<- as.data.frame(str_match(Unique, "^(.)-([:upper:]{3})_([:alpha:]{3,4})_([:digit:])"))
+# colnames(samp_split)<- c("Sample", "Serum", "Dox", "Inh", "Replicate")
+# long2<-merge(long1, samp_split, by="Sample")
+# 
+# #creating lookup table for 
+# long2_ctrl<- long2%>% filter(Inh=="Veh")%>% group_by(Species, unsat, Serum, Dox)%>% summarise(ctrl_mean = mean(ratio))
+# 
+# 
+# for (i in 1:dim(long2)[1])
+# {
+#   long2$ctrl[i]<-long2_ctrl$ctrl_mean[long2_ctrl$Species==long2$Species[i] &  long2_ctrl$unsat==long2$unsat[i] &long2_ctrl$Serum==long2$Serum[i] & long2_ctrl$Dox==long2$Dox[i]]
+#   #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
+# }
+# 
+# long2$subtr<- long2$ratio- long2$ctrl
 ```
 
 All the data should be in the correct format for ggplot2 graphing. 
