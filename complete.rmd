@@ -1,0 +1,210 @@
+---
+title: "Complete Lipid saturation"
+author: "Dan Ackerman"
+date: "December 14, 2015"
+output: html_document
+---
+
+Attempting to create dataframe containing full results of August 2015 analysis of SCD1i in vitro veh and dox cells. This dataframe should contain all saturation information about TGs and all different PLs. 
+
+First step, creating combined dataframe. (as previously)
+```{r, warning = FALSE}
+setwd("C:/R/Aug2015")
+dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+rep1<-read.table("Input_data_InVitro_5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+rep2<-read.table("Input_data_InVitro_5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+dat3<-merge(dat1, dat2, by="Label")
+rep3<-merge(rep1, rep2, by="Label")
+colnames(dat3)<-c(colnames(dat3)[1], paste0("S-", colnames(dat3[2:21])))
+colnames(rep3)<-c(colnames(rep3)[1], paste0("R-", colnames(rep3[2:20])))
+comb1<-merge(dat3, rep3, by="Label")
+library(stringr)
+```
+
+Next, trying to extract different patterns for different lipids.
+
+```{r, echo=FALSE}
+lipidtype<- as.data.frame(str_match(comb1$Label, "^(.*)\\((.*)"))
+comb2<- merge(comb1, lipidtype[,1:2], by.x= "Label", by.y = "V1")
+liplist1<- split(comb2, comb2$V2)
+CL1<- c("ChE")
+CL2<- c("PC", "PS", "SM", "Cer", "DG", "PE", "PG", "PI")
+CL3<- c("TG")
+
+del.V2<- function(df){
+  df$V2<- NULL
+  df
+  }
+liplist2<-lapply(liplist1, del.V2)
+
+##function: calculate chain length
+##takes dataframe, assesses if name %in% CL1, CL2, CL3
+##split $Label into component parts
+## merge back with original dataset
+CL1.split<- function(df){
+  FA1chain<- as.data.frame(str_match(df$Label,
+            "^(.*)\\(([0-9]{1,2}):([0-9])\\)"))
+  colnames(FA1chain)<- c("Label", "Species", "ch1", "ch1DBs")
+  merge(df, FA1chain, by="Label")
+}
+
+
+names(liplist1)
+chain_no<- c(rep(NA, length(liplist1)))
+chain_no[names(liplist1) %in% CL1]<- "CL1"
+chain_no[names(liplist1) %in% CL2]<- "CL2"
+chain_no[names(liplist1) %in% CL3]<- "CL3"
+
+
+  cl1_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\)"
+  cl2_ch<- "^(.*)\\(([:alpha:]{0,1})([0-9]{1,2}):([0-9])([ep]{0,1})\\/([0-9]{1,2}):([0-9])\\)"
+  cl3_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\/([0-9]{1,2}):([0-9])/([0-9]{1,2}):([0-9])\\)"
+  
+CL.split<- function(df, cl){
+  if(cl=="CL1"){
+    chains<- cl1_ch
+    nms<- c("Label", "Species", "ch1", "ch1DBs")
+    } 
+  if(cl=="CL2"){
+    chains<- cl2_ch
+    nms<- c("Label", "Species", "Add1", "ch1", "ch1DBs","Add2", "ch2", "ch2DBs")
+  }
+  if(cl=="CL3"){
+    chains<- cl3_ch
+    nms<- c("Label", "Species", "ch1", "ch1DBs", "ch2", "ch2DBs", "ch3", "ch3DBs")
+    ##why do CL1 and CL3 not contain Add1 column?
+  }
+  #else stop("unknown chain number") # doesn't work with this 
+  
+  FA_chains<- as.data.frame(str_match(df$Label, chains))
+  colnames(FA_chains)<- nms
+  merge(df, FA_chains, by="Label")
+}
+
+
+d<- Map(CL.split, liplist1, chain_no)
+#b<-d[["PC"]]
+
+ 
+```
+
+
+```{r}
+num.col<- function(vec){
+    vec<- as.numeric(as.character(vec))
+    vec[is.na(vec)]<- 0
+    vec
+  }
+
+comb2$ch1 <- num.col(comb2$ch1)
+comb2$ch1DBs <- num.col(comb2$ch1DBs)
+comb2$ch2 <- num.col(comb2$ch2)
+comb2$ch2DBs <- num.col(comb2$ch2DBs)
+comb2$ch3 <- num.col(comb2$ch3)
+comb2$ch3DBs <- num.col(comb2$ch3DBs)
+comb2$unsat<-  comb2$ch1DBs+comb2$ch2DBs+comb2$ch3DBs
+#apply(comb2, 2, class)  ## very strange- class() gives different result thab str() in terms of class of the columns
+
+library(data.table)
+comb3<-setDT(comb2)[,lapply(.SD, sum), by=.(Species, unsat), .SDcols=-c('Label',"ch1", "ch1DBs", "Add1", "Add2", "ch2", "ch2DBs", "ch3","ch3DBs")]
+require(tidyr)
+long1<-  gather(comb3, Sample, Measurement, 3:length(colnames(comb3)))
+```
+
+
+Next, I would like to divide each value by the total amount of that particular lipid species in that sample.
+
+```{r}
+sum1<-long1%>% group_by(Species, Sample)%>% summarise(total = sum(Measurement))
+
+
+for (i in 1:dim(long1)[1])
+{
+  long1$total[i]<-sum1$total[sum1$Species==long1$Species[i] & sum1$Sample==long1$Sample[i]]
+  #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
+
+}  
+
+long1$ratio<- long1$Measurement/long1$total
+
+# checking that ratios add up to 1
+#checkratio<- long1%>% group_by(Species, Sample)%>% summarise(total = sum(ratio))
+```
+
+Need to identify the average of the untreated group for each comparison and subtract that value from the treatment. In most cases, this will involve subtracting the average of the DMSO treated group from the SCDi treated group. Also will be interested in looking at the effect of Dox/DGAT knockdown in both 5% serum grou and 0.5% serum group. 
+
+
+```{r}
+Unique<- unique(long1$Sample)
+samp_split<- as.data.frame(str_match(Unique, "^(.)-([:upper:]{3})_([:alpha:]{3,4})_([:digit:])"))
+colnames(samp_split)<- c("Sample", "Serum", "Dox", "Inh", "Replicate")
+long2<-merge(long1, samp_split, by="Sample")
+
+#creating lookup table for 
+long2_ctrl<- long2%>% filter(Inh=="Veh")%>% group_by(Species, unsat, Serum, Dox)%>% summarise(ctrl_mean = mean(ratio))
+
+
+for (i in 1:dim(long2)[1])
+{
+  long2$ctrl[i]<-long2_ctrl$ctrl_mean[long2_ctrl$Species==long2$Species[i] &  long2_ctrl$unsat==long2$unsat[i] &long2_ctrl$Serum==long2$Serum[i] & long2_ctrl$Dox==long2$Dox[i]]
+  #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
+}
+
+long2$subtr<- long2$ratio- long2$ctrl
+```
+
+All the data should be in the correct format for ggplot2 graphing. 
+
+
+```{r}
+require(ggplot2)
+
+plotobj<- function(df1, species){
+    long<- df1 %>% filter(Species==species)
+
+  p<-ggplot(long, aes(x=factor(unsat), y=subtr, fill= factor(Inh)))+    geom_boxplot()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  labs(x="Double Bonds") +
+    facet_grid(Serum~Dox)
+  p
+}
+
+PC<- plotobj(long2, "PC")
+PC+ ggtitle("Changes in saturation of PC species")
+
+TG<- plotobj(long2, "TG")
+TG+ ggtitle("Changes in saturation of TG species")
+
+PE<- plotobj(long2, "PE")
+PE+ ggtitle("Changes in saturation of PE species")
+
+PI<- plotobj(long2, "PI")
+PI+ ggtitle("Changes in saturation of PI species")
+
+PS<- plotobj(long2, "PS")
+PS+ ggtitle("Changes in saturation of PS species")
+
+PG<- plotobj(long2, "PG")
+PG+ ggtitle("Changes in saturation of PG species")
+
+SM<- plotobj(long2, "SM")
+SM+ ggtitle("Changes in saturation of SM species")
+
+ChE<- plotobj(long2, "ChE")
+ChE+ ggtitle("Changes in saturation of ChE species")
+
+DG<- plotobj(long2, "DG")
+DG+ ggtitle("Changes in saturation of DG species")
+```
+
+Ugly. Now trying to make figures showing change in saturation due to SCD inhibition
+
+
+```{r}
+
+
+
+```
+
