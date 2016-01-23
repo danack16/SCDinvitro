@@ -78,7 +78,7 @@ CL.split<- function(df, cl){
 
 
 satlist1<- Map(CL.split, liplist2, chain_no) #applying function to list
-#b<-d[["PC"]]
+# b<-satlist1[["TG"]]
 
  
 ```
@@ -101,7 +101,7 @@ tot.unsat2<- function(df, cl){
     exclude<- c(exclude, c("ch2", "ch2DBs", "Add1", "Add2"))
   }
     if(cl=="CL3"){
-    df$unsat<- as.numeric(as.character(df$ch1DBs))+as.numeric(as.character(df$ch2DBs))
+    df$unsat<- as.numeric(as.character(df$ch1DBs))+as.numeric(as.character(df$ch2DBs))+ as.numeric(df$ch3DBs)
     exclude<- c(exclude, c("ch2", "ch2DBs", "ch3", "ch3DBs"))
     }
    df2<-setDT(df)[,lapply(.SD, sum), by=unsat, .SDcols=-exclude]
@@ -109,7 +109,7 @@ tot.unsat2<- function(df, cl){
 }
 
 satlist2<- Map(tot.unsat2, satlist1, chain_no)
-
+#tg3<- satlist2[["TG"]]
 ```
 
 
@@ -128,7 +128,7 @@ scal<- function(DAT){
   df2[order(df2$unsat),]
 }
 satlist3<- lapply(satlist2, scal)
-
+#p1<- satlist3[["TG"]]
 
 
 ```
@@ -138,80 +138,70 @@ Next, center to look at effect of a treatment on distribution as shift
 
 ```{r}
 
-cntr<- function(df, controls){
+centr<- function(df, controls){
   # takes a dataframe and a vector of sample names
   # calculates mean of each saturatio value across control samples
   # subtracts mean from all values
+  df_ctrl<- df[,names(df) %in% controls]
+  df2<- sweep(df, 1, rowMeans(df_ctrl), "-")
+  df2$unsat<- df$unsat
+  df2
+}
+# center around R-STD_Veh group
+conts1<- names(satlist3[["PC"]])[22:26]
+R_centlist<- lapply(satlist3, centr, conts1)
+
+#tg1<-R_centlist[["TG"]]  
   
+# p2<-centr(satlist3[["PC"]], conts1)
+# identical(R_centlist[["PC"]], p2)
+
+
+require(tidyr); require(ggplot2)
+
+diff.plot<- function(df, exclude=c(), order=c()){
+  ## function that takes centered dataframe created by centr()
+  ## converts into long format
+  ## graphs it in ggplot2
+  ## contains argument that takes list of column names to exclude
+  ## contains argument that allows user to decide which order to graph in (levels for ggplot2)
+  ## naming of samples has to be as follows:
+  ### column names match group names with "_1", "_2", etc to identify individual samples
+  
+    long_df<- gather(df, Sample, Measurement, 2:length(colnames(df)))
+    long_df$Group<-unlist(strsplit(as.character(long_df$Sample), '[1-5]$'))
+    long_df$Group<- gsub("_$", "", long_df$Group)
+    long_df2<- long_df[!(long_df$Sample %in% exclude),]
+    try(long_df2$Group<- factor(long_df2$Group, levels = order))
+    ##plotting  
+    p<-ggplot(long_df2, 
+      aes(x=factor(unsat), y=Measurement, fill= factor(Group)))
+    p<- p +    geom_boxplot()
+    p<- p + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  labs(x="Double Bonds")
+    p
 }
 
-# Unique<- unique(long1$Sample)
-# samp_split<- as.data.frame(str_match(Unique, "^(.)-([:upper:]{3})_([:alpha:]{3,4})_([:digit:])"))
-# colnames(samp_split)<- c("Sample", "Serum", "Dox", "Inh", "Replicate")
-# long2<-merge(long1, samp_split, by="Sample")
-# 
-# #creating lookup table for 
-# long2_ctrl<- long2%>% filter(Inh=="Veh")%>% group_by(Species, unsat, Serum, Dox)%>% summarise(ctrl_mean = mean(ratio))
-# 
-# 
-# for (i in 1:dim(long2)[1])
-# {
-#   long2$ctrl[i]<-long2_ctrl$ctrl_mean[long2_ctrl$Species==long2$Species[i] &  long2_ctrl$unsat==long2$unsat[i] &long2_ctrl$Serum==long2$Serum[i] & long2_ctrl$Dox==long2$Dox[i]]
-#   #long1$ratio1[i]<- long$Measurement[i]/(sum1[]) 
-# }
-# 
-# long2$subtr<- long2$ratio- long2$ctrl
-```
+plot_list1<- lapply(R_centlist, diff.plot)
+order1<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi", 
+           "S-STD_Veh", "S-STD_SCDi", "S-DOX_Veh", "S-DOX_SCDi")
+exclude1<- c()
+plot_list1<- lapply(R_centlist, diff.plot, exclude1, order1)
+# plot_list1[["TG"]]
 
-All the data should be in the correct format for ggplot2 graphing. 
+for (i in names(plot_list1)){
+  plot_list2<- vector("list", length(names(plot_list1)))
+  plot_list2[[i]]<-plot_list1[[i]]+ ggtitle(paste("Changes in saturation of", i, "species"))
+  }
+  
+plot_list2<- vector("list", length(names(plot_list1)))
+names(plot_list2)<- names(plot_list1)
+for (i in names(plot_list1)){
+  plot_list2[[i]]<-plot_list1[[i]]+ ggtitle(paste("Changes in saturation of", i, "species"))
+  }
 
-
-```{r}
-require(ggplot2)
-
-plotobj<- function(df1, species){
-    long<- df1 %>% filter(Species==species)
-
-  p<-ggplot(long, aes(x=factor(unsat), y=subtr, fill= factor(Inh)))+    geom_boxplot()+
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  labs(x="Double Bonds") +
-    facet_grid(Serum~Dox)
-  p
-}
-
-PC<- plotobj(long2, "PC")
-PC+ ggtitle("Changes in saturation of PC species")
-
-TG<- plotobj(long2, "TG")
-TG+ ggtitle("Changes in saturation of TG species")
-
-PE<- plotobj(long2, "PE")
-PE+ ggtitle("Changes in saturation of PE species")
-
-PI<- plotobj(long2, "PI")
-PI+ ggtitle("Changes in saturation of PI species")
-
-PS<- plotobj(long2, "PS")
-PS+ ggtitle("Changes in saturation of PS species")
-
-PG<- plotobj(long2, "PG")
-PG+ ggtitle("Changes in saturation of PG species")
-
-SM<- plotobj(long2, "SM")
-SM+ ggtitle("Changes in saturation of SM species")
-
-ChE<- plotobj(long2, "ChE")
-ChE+ ggtitle("Changes in saturation of ChE species")
-
-DG<- plotobj(long2, "DG")
-DG+ ggtitle("Changes in saturation of DG species")
-```
-
-Ugly. Now trying to make figures showing change in saturation due to SCD inhibition
-
-
-```{r}
-
-
+for (i in names(plot_list2)){
+  print(plot_list2[[i]])
+  }
 
 ```
 
