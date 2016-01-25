@@ -9,7 +9,7 @@ Attempting to create dataframe containing full results of August 2015 analysis o
 
 First step, creating combined dataframe. (as previously)
 ```{r, warning = FALSE}
-setwd("C:/R/Aug2015")
+
 dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
 dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
 
@@ -203,5 +203,145 @@ for (i in names(plot_list2)){
   print(plot_list2[[i]])
   }
 
+plot_list2[["TG"]]
+
+
 ```
+
+Next I want to make publishable figures that illustrate the changes in saturation from two samples
+
+```{r}
+se <- function(x) sqrt(var(x)/length(x))
+
+mneffect<- function(df, control, treatment){
+  #function that graphs changes in saturation profile between two groups
+  #takes a dataframe and two strings of column names
+  #output is gg barplot
+  
+  #### include some stop options if control and treatment columns are not present in names(df)
+  
+  df_control<- df[, names(df) %in% control]
+  df_treat<- df[, names(df) %in% treatment]
+  df_diff<- sweep(df_treat, 1, rowMeans(df_control), "-")
+  
+  ##Create df with all the data required for ggplot
+  df_diff2<- data.frame(DBs=df[,1])
+  df_diff2$mean<- apply(df_diff,1,mean)
+  df_diff2$sd<- apply(df_diff,1,se)
+  df_diff2$ctrlmn<- rowMeans(df_control)
+
+  
+
+    z<- ggplot(df_diff2, aes(x=DBs, y=mean, fill=mean>0))+
+       geom_bar(stat="identity", position="identity", color="black", size=0.5)+
+      geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd),
+                  width=.2,                    # Width of the error bars
+                  position=position_dodge(.9))+
+      scale_x_continuous(breaks=seq(0,9,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.3,0.05))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="relative change")+
+      coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-.2, 0.45))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+      theme_bw()+
+  
+    geom_point(aes(size=ctrlmn, x= DBs, y=0.35), 
+               shape = 21, color= "black", fill= "cornsilk")+
+        scale_size_area(max_size=6.5, guide=FALSE)+
+        annotate("text", x=4.5, y=0.43, label= "TG species", size=5)+
+        annotate("text", x=4.5, y=0.39, label= "Abundance", size=3.5)
+  z  
+    
+}
+
+mneffect2<- function(df, control, treatment){
+  #function that graphs changes in saturation profile between two groups
+  #takes a dataframe and two strings of column names
+  #output is gg barplot
+  
+  #### include some stop options if control and treatment columns are not present in names(df)
+  
+  df_control<- df[, names(df) %in% control]
+  df_treat<- df[, names(df) %in% treatment]
+  df_diff<- sweep(df_treat, 1, rowMeans(df_control), "-")
+  
+  ##Create df with all the data required for ggplot
+  df_diff2<- data.frame(DBs=df[,1])
+  df_diff2$mean<- apply(df_diff,1,mean)
+  df_diff2$sd<- apply(df_diff,1,se)
+  df_diff2$ctrlmn<- rowMeans(df_control)
+
+  
+
+    z<- ggplot(df_diff2, aes(x=DBs, y=mean, fill=mean>0))+
+       geom_bar(stat="identity", position="identity", color="black", size=0.5)+
+      geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd),
+                  width=.2,                    # Width of the error bars
+                  position=position_dodge(.9))
+        z  
+    
+}
+
+
+
+TG_effects<- function(lst, grp1, grp2){
+  ## takes two text strings, identifies columns in df with those names
+  ## takes list, extracts "TG" element as dataframe
+  ## performs mneffect() function on those columns
+  
+  df<-lst[["TG"]]
+  cols1<- grep(grp1, names(df), value=TRUE)
+  cols2<- grep(grp2, names(df), value=TRUE)
+  p<- mneffect2(df, cols1, cols2)
+  p
+}
+
+# rSTD_Veh<- grep("R-STD_Veh", names(satlist3[["TG"]]), value=TRUE)
+# sSTD_Veh<- grep("S-STD_Veh", names(satlist3[["TG"]]), value=TRUE)
+# 
+# mneffect(satlist3[["TG"]], rSTD_Veh, sSTD_Veh)
+
+serum_effect<-TG_effects(satlist3, "R-STD_Veh", "S-STD_Veh")
+TG_effects(satlist3, "R-STD_Veh", "R-DOX_Veh")
+TG_effects(satlist3, "R-STD_Veh", "R-STD_SCDi")
+TG_effects(satlist3, "R-DOX_Veh", "R-DOX_SCDi")
+
+
+TG_effects(satlist3, "S-STD_Veh", "S-DOX_Veh")
+TG_effects(satlist3, "S-STD_Veh", "S-STD_SCDi")
+TG_effects(satlist3, "S-DOX_Veh", "S-DOX_SCDi")
+
+names(satlist3[["TG"]])
+
+serum_effect2<-TG_effects(satlist3, "R-STD_Veh", "S-STD_Veh")
+
+# svg("./20160125/TG_serum_effect.svg", width=4)
+# serum_effect2 +  scale_x_continuous(breaks=seq(0,9,1))+
+#       scale_y_continuous(breaks=seq(-0.1,0.15,0.05))+
+#       scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+#       geom_hline(aes(yintercept=0))+labs(y="relative change")+
+#       coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.075, 0.12))+
+#       theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+#         axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+#       theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.11), shape = 21, color= "black", fill= "cornsilk")+
+#         scale_size_area(max_size=6.5, guide=FALSE)+
+#         annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=5)+
+#         annotate("text", x=4.5, y=0.12, label= "Abundance", size=5)
+# dev.off()
+### can't seem to be able to import svg into illustrator
+
+serum_effect3<- serum_effect2 +  scale_x_continuous(breaks=seq(0,9,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.15,0.05))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="relative change")+
+      coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.075, 0.12))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+      theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.11), shape = 21, color= "black", fill= "cornsilk")+
+        scale_size_area(max_size=6.5, guide=FALSE)+
+        annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=5)+
+        annotate("text", x=4.5, y=0.12, label= "Abundance", size=5)
+
+ggsave("./20160125/TG_serum_effect.pdf", plot = serum_effect3, width=4, height=4)
 
