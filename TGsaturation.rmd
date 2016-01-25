@@ -1,0 +1,226 @@
+---
+title: "TG_SCDi_changes"
+author: "Dan Ackerman"
+date: "December 10, 2015"
+output: html_document
+---
+
+Trying to look at changes in saturation of TG species to ultimately compare these changes to those seen in PC and other PL species
+
+```{r}
+## creating dataframe
+
+setwd("C:/R/Aug2015")
+dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+rep1<-read.table("Input_data_InVitro_5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+rep2<-read.table("Input_data_InVitro_5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+dat3<-merge(dat1, dat2, by="Label")
+rep3<-merge(rep1, rep2, by="Label")
+colnames(dat3)<-c(colnames(dat3)[1], paste0("S-", colnames(dat3[2:21])))
+colnames(rep3)<-c(colnames(rep3)[1], paste0("R-", colnames(rep3[2:20])))
+
+
+comb1<-merge(dat3, rep3, by="Label")
+
+
+
+library(stringr)
+
+
+######################################################
+## Calculating TG sat distribution
+tgs1<-comb1[grep("TG", comb1[,1]),]
+
+
+tg_labels<-as.data.frame(str_match(tgs1[,1], "^(.*):(.*)/(.*):(.*)/(.*):(.*)"))
+## http://stackoverflow.com/questions/24100613/split-column-into-multiple-columns-r
+colnames(tg_labels)<-c("species", "ch1", "ch1DBs", "ch2", "ch2DBs", "ch3", "ch3DBs")
+##adds column names
+##cleaning up
+tg_labels$ch1<-gsub("TG\\(", "", tg_labels$ch1)
+tg_labels$ch3DBs<-gsub("\\)", "", tg_labels$ch3DBs)
+
+tgs2<-merge(tgs1,tg_labels, by.x="Label", by.y = "species")
+
+tgs2$ch1DBs<-as.numeric(as.character(tgs2$ch1DBs))
+tgs2$ch2DBs<-as.numeric(as.character(tgs2$ch2DBs))
+tgs2$ch3DBs<-as.numeric(as.character(tgs2$ch3DBs))
+
+
+tgs2$unsat<-tgs2$ch1DBs+tgs2$ch2DBs+tgs2$ch3DBs
+## reorder
+
+tgs2<- tgs2[,c(1, 41:47, 2:40)]
+
+require(data.table)
+dat4<-as.data.frame(setDT(tgs2)[,lapply(.SD, sum), by=unsat, .SDcols=-c('Label',"ch1", "ch1DBs", "ch2", "ch2DBs", "ch3", "ch3DBs")])
+
+```
+
+Function to divide each column by column total. 
+
+```{r, warning=FALSE, error=FALSE, echo=FALSE}
+scal<- function(dat){
+  DAT<-dat
+  nms<- colnames(DAT)
+  tgs_col_sum<-apply(DAT[,-1],2,sum)  #calculating column total
+  df<-data.frame(DAT[,1])
+  df2<-sweep(DAT[,-1],2,tgs_col_sum, "/")   #each dataframe element divided by column total
+
+  df3<-cbind(df,df2)
+  colnames(df3)<- nms
+  df3[order(df3[,1]),]
+}
+
+```
+
+Scaling:
+
+```{r}
+dat5<- scal(dat4)
+
+nmes<- gsub("_", "", colnames(dat5)) 
+colnames(dat5)<- gsub(" ", "", nmes)  
+```
+
+Creating a dataframes that contain effect of SCDi under various conditions 
+Split data into pairs of veh vs SCDi under various conditions then subtract mean of Veh from all values. 
+```{r}
+
+##mnsub() outputs function that calculates mean of control group and subtracts it from all values
+mnsub<- function(df1, columns){
+  
+  df2  <-df1[,grep(columns, colnames(df1))]
+  
+  function(grepstring){
+    x<- apply(df2[,grep(grepstring, colnames(df2))],1,mean)
+    df3<- sweep(df2,1,x, "-")
+    df3<- cbind(data.frame(DBs=dat4[,1]), df3)
+    require(tidyr)
+    long_df<- gather(df3, Sample, Measurement, 2:length(colnames(df3)))
+    long_df$Group<-unlist(strsplit(as.character(long_df$Sample), '[1-5]$'))
+    long_df
+  }
+}
+
+.s_std<- mnsub(dat5, "S-STD")
+  S_STD<- .s_std("Veh")
+.s_dox<- mnsub(dat5, "S-DOX")
+  S_DOX<- .s_dox("Veh")
+.r_std<- mnsub(dat5, "R-STD")
+  R_STD<- .r_std("Veh")
+.r_dox<- mnsub(dat5, "R-DOX")
+  R_DOX<- .r_dox("Veh")
+```
+
+Now plotting boxplot of mean subtracted values. All "Veh" samples should be clustering around 0.
+
+```{r}
+require(ggplot2)
+plotobj<- function(df1){
+  ggplot(df1, aes(x=factor(DBs), y=Measurement, fill= factor(Group)))+    geom_boxplot()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  labs(x="Double Bonds") +
+    coord_cartesian(ylim = c(-0.2, 0.3))
+}
+
+a<- plotobj(S_STD)
+  a+ggtitle("TG species, 0.5% serum, no DOX, effect of SCDi")
+b<- plotobj(S_DOX)
+  b+ggtitle("TG species, 0.5% serum, with DOX, effect of SCDi")
+c<- plotobj(R_STD)
+  c+ggtitle("TG species, 5% serum, no DOX, effect of SCDi")
+d<- plotobj(R_DOX)
+  d+ggtitle("TG species, 5% serum, with DOX, effect of SCDi")
+```
+
+
+Identifying outliers
+
+```{r, error=FALSE, warning=FALSE}
+id_outl<- function(df){
+  ggplot(df, aes(x=factor(DBs), y=Measurement, color=Sample))+
+  geom_point(position = position_jitter(w = 0.2), stat = "identity")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +   
+  labs(x="Double Bonds")+ facet_grid(.~Group)
+}
+
+e<- id_outl(S_STD)
+  e+ ggtitle("TG species, 0.5% serum, no DOX, effect of SCDi")
+f<- id_outl(S_DOX)
+  f+ggtitle("TG species, 0.5% serum, with DOX, effect of SCDi")
+g<- id_outl(R_STD)
+  g+ggtitle("TG species, 5% serum, no DOX, effect of SCDi")
+h<- id_outl(R_DOX)
+  h+ggtitle("TG species, 5% serum, with DOX, effect of SCDi")
+```
+
+
+```{r, error=FALSE, warning=FALSE}  
+  ##mneffect() outputs function that calculates mean of control group and subtracts it from treatment values. 
+mneffect<- function(df1, columns){
+  #"columns" argument is character string that is present in column names of columns that should be included
+  #"columns" string will be searched for using 'grep()' function
+  #output is another function which will utilize dataframe to generate ggplot
+  
+  df2  <-df1[,grep(columns, colnames(df1))]
+  
+  function(grepstring="Veh"){
+    x<- apply(df2[,grep(grepstring, colnames(df2))],1,mean)
+    df3<- sweep(df2[,-grep(grepstring, colnames(df2))],1,x, "-")
+    
+    df4<- cbind(data.frame(DBs=df1[,1]), df3)
+      df4$mean<- apply(df3[,2:length(colnames(df3))],1,mean)
+        df4$sd<- apply(df3[,2:length(colnames(df3))],1,sd)
+    df4$ctrlmn<- x
+    z<- ggplot(df4, aes(x=DBs, y=mean, fill=mean>0))+
+      geom_bar(stat="identity", position="identity", color="black", size=0.5)+
+      geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd),
+                  width=.2,                    # Width of the error bars
+                  position=position_dodge(.9))+
+      scale_x_continuous(breaks=seq(0,7,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.3,0.05))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="relative change")+
+      coord_cartesian(xlim = c(-0.5, 7.5), ylim=c(-.2, 0.45))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+      theme_bw()+
+  
+    geom_point(aes(size=ctrlmn, x= DBs, y=0.35), 
+               shape = 21, color= "black", fill= "cornsilk")+
+        scale_size_area(max_size=6.5, guide=FALSE)+
+        annotate("text", x=3.5, y=0.43, label= "TG species", size=5)+
+        annotate("text", x=3.5, y=0.39, label= "Abundance", size=3.5)
+  z  
+    
+  }
+}
+
+  
+
+
+.s_std_chng<- mneffect(dat5, "S-STD")
+  S_STD_chng<- .s_std_chng("Veh")
+.s_dox_chng<- mneffect(dat5, "S-DOX")
+  S_DOX_chng<- .s_dox_chng("Veh")
+.r_std_chng<- mneffect(dat5, "R-STD")
+  R_STD_chng<- .r_std_chng("Veh")
+.r_dox_chng<- mneffect(dat5, "R-DOX")
+  R_DOX_chng<- .r_dox_chng("Veh")
+  
+  
+S_STD_chng+ annotate("text", x=3.5, y=0.3, 
+                 label= "TG species, 0.5% serum, no DOX, effect of SCDi", size=3.5)
+S_DOX_chng+ annotate("text", x=3.5, y=0.3, 
+                 label= "TG species, 0.5% serum, with DOX, effect of SCDi", size=3.5)
+R_STD_chng+ annotate("text", x=3.5, y=0.3, 
+                 label= "TG species, 5% serum, no DOX, effect of SCDi", size=3.5)
+R_DOX_chng+ annotate("text", x=3.5, y=0.3, 
+                 label= "TG species, 5% serum, with DOX, effect of SCDi", size=3.5)
+
+
+```
+  
