@@ -1,5 +1,5 @@
 ---
-title: "Complete Lipid saturation"
+title: "Complete Lipid saturation2"
 author: "Dan Ackerman"
 date: "December 14, 2015"
 output: html_document
@@ -9,7 +9,7 @@ Attempting to create dataframe containing full results of August 2015 analysis o
 
 First step, creating combined dataframe. (as previously)
 ```{r, warning = FALSE}
-
+setwd("C:/R/Aug2015")
 dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
 dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
 
@@ -21,6 +21,7 @@ rep3<-merge(rep1, rep2, by="Label")
 colnames(dat3)<-c(colnames(dat3)[1], paste0("S-", colnames(dat3[2:21])))
 colnames(rep3)<-c(colnames(rep3)[1], paste0("R-", colnames(rep3[2:20])))
 comb1<-merge(dat3, rep3, by="Label")
+n<- length(grep("_", names(comb1)))
 library(stringr)
 ```
 
@@ -78,7 +79,7 @@ CL.split<- function(df, cl){
 
 
 satlist1<- Map(CL.split, liplist2, chain_no) #applying function to list
-# b<-satlist1[["TG"]]
+#c<-satlist1[["PC"]]
 
  
 ```
@@ -118,6 +119,8 @@ Next, I would like to divide each value by the total amount of that particular l
 ```{r}
 # scaling each sample to look at distribution of each lipid as percentage shift
 # does not take into account changes in abundance of different lipid species across groups
+require(dplyr)
+
 
 scal<- function(DAT){
   x<-DAT$unsat
@@ -131,6 +134,31 @@ satlist3<- lapply(satlist2, scal)
 #p1<- satlist3[["TG"]]
 
 
+scal2<- function(df, exclude = c()){
+  ##df must contain column named "unsat"
+  
+  exclude2<- c("unsat", exclude)
+  excluded<- select(df, one_of(exclude2))
+  included<- names(df)[!(names(df)%in% exclude2)]
+  DAT<- select(df, one_of(included))
+  df2<-sweep(DAT,2,colSums(DAT), "/")
+  df3<- cbind(excluded, df2)
+  df3[order(df3$unsat),]
+
+  }
+satlist3<- lapply(satlist2, scal)
+# p1<- satlist2[["TG"]]
+
+
+
+# ## testing new scal2() function
+# exclude= c(names(p1)[5:7])
+# # exclude2<- c("unsat", exclude)
+# p2<- scal(p1)
+# p3<-     scal2(p1, exclude =exclude)
+# apply(p3, 2, sum)
+# identical(p2, p3)
+# names(p1)%in% exclude2
 ```
 
 Next, center to look at effect of a treatment on distribution as shift
@@ -315,33 +343,179 @@ TG_effects(satlist3, "S-DOX_Veh", "S-DOX_SCDi")
 names(satlist3[["TG"]])
 
 serum_effect2<-TG_effects(satlist3, "R-STD_Veh", "S-STD_Veh")
-
-# svg("./20160125/TG_serum_effect.svg", width=4)
-# serum_effect2 +  scale_x_continuous(breaks=seq(0,9,1))+
-#       scale_y_continuous(breaks=seq(-0.1,0.15,0.05))+
-#       scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
-#       geom_hline(aes(yintercept=0))+labs(y="relative change")+
-#       coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.075, 0.12))+
-#       theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
-#         axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
-#       theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.11), shape = 21, color= "black", fill= "cornsilk")+
-#         scale_size_area(max_size=6.5, guide=FALSE)+
-#         annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=5)+
-#         annotate("text", x=4.5, y=0.12, label= "Abundance", size=5)
-# dev.off()
-### can't seem to be able to import svg into illustrator
+SCD_effect_R<- TG_effects(satlist3, "R-STD_Veh", "R-STD_SCDi")
 
 serum_effect3<- serum_effect2 +  scale_x_continuous(breaks=seq(0,9,1))+
-      scale_y_continuous(breaks=seq(-0.1,0.15,0.05))+
+      scale_y_continuous(breaks=seq(-0.1,0.075,0.025))+
       scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
-      geom_hline(aes(yintercept=0))+labs(y="relative change")+
+      geom_hline(aes(yintercept=0))+labs(y="Relative Change", x= "Double Bonds")+
       coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.075, 0.12))+
       theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
         axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
-      theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.11), shape = 21, color= "black", fill= "cornsilk")+
+      theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.105), shape = 21, color= "black", fill= "cornsilk")+
         scale_size_area(max_size=6.5, guide=FALSE)+
-        annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=5)+
-        annotate("text", x=4.5, y=0.12, label= "Abundance", size=5)
+        annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=3)+
+        annotate("text", x=4.5, y=0.12, label= "Abundance", size=3)
 
-ggsave("./20160125/TG_serum_effect.pdf", plot = serum_effect3, width=4, height=4)
+############ Figure generation######################################################
+#ggsave("./20160126/TG_serum_effect.pdf", plot = serum_effect3, width=3, height=4, useDingbats=FALSE)
+## used this to generate figure. Had to change plot thickness to 2 in illustrator
+##very important to use useDingbats=FALSE here for geom_point to be visible in Illustrator
+####################################################################################
+
+rdox_effect<- TG_effects(satlist3, "R-STD_Veh", "R-DOX_Veh")
+sdox_effect<- TG_effects(satlist3, "S-STD_Veh", "S-DOX_Veh")
+rdox_effect2<- rdox_effect+  scale_x_continuous(breaks=seq(0,9,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.1,0.025))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="Relative Change", x= "Double Bonds")+
+      coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.07, 0.1))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+ theme_bw() + 
+      ggtitle("Change in TG saturation after \nDGAT loss under 5% serum")
+sdox_effect2<-sdox_effect+  scale_x_continuous(breaks=seq(0,9,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.1,0.025))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="Relative Change", x= "Double Bonds")+
+      coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.07, 0.1))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+      theme_bw() + ggtitle("Change in TG saturation after \nDGAT loss under 0.5% serum")
+############ Figure generation######################################################
+#ggsave("./20160127/rdoxeffect.pdf", plot = rdox_effect2, width=2.5, height=4, useDingbats=FALSE)
+#ggsave("./20160127/sdoxeffect.pdf", plot = sdox_effect2, width=2.5, height=4, useDingbats=FALSE)
+## used this to generate figure. Had to change plot thickness to 2 in illustrator
+##very important to use useDingbats=FALSE here for geom_point to be visible in Illustrator
+####################################################################################
+
+
+FAsplit<- function(df){
+  ## function to take dataframe of lipids and split into individual FA chains
+  ## df needs to contain columns with chain length and number of double bonds for each FA
+  ## this was done above using stringr breakup of lipid name into constituents
+  ## takes each TG and introduces that entry three times, once for each FA chain, 
+  ## preserving only chain length/saturation for one of the chains in each entry. 
+  ## assumes the following naming for columns: 
+          ### All sample column names include "_"
+          ### chain length columns named "ch1", "ch2", "ch3" ("ch2" and "ch3" might be absent)
+          ### DB number columns "ch1DBs", "ch2DBs", "ch3DBs" (last two might be absent)
+
+  ch1<- c(grep("ch1$", names(df)), grep("ch1DBs", names(df)))
+  ch2<- c(grep("ch2$", names(df)), grep("ch2DBs", names(df)))
+  ch3<- c(grep("ch3$", names(df)), grep("ch3DBs", names(df)))
+  
+  if (!("ch1" %in% names(df) & "ch1DBs" %in% names(df))){
+    stop("chain length and saturation not provided in correct format")
+  }
+  cols1<- c(ch1, grep("_", names(df)))
+  df2<- df[,cols1]
+  names(df2)<- c("length", "unsat", names(df)[grep("_", names(df))]) 
+    
+  if ("ch2" %in% names(df) & "ch2DBs" %in% names(df)){
+    cols2<- c(ch2, grep("_", names(df)))
+    df_ch2<- df[,cols2]
+    names(df_ch2)<- c("length", "unsat", names(df)[grep("_", names(df))]) 
+    df2<- rbind(df2, df_ch2)
+  }
+  
+  if ("ch3" %in% names(df) & "ch3DBs" %in% names(df)){
+    cols3<- c(ch3, grep("_", names(df)))
+    df_ch3<- df[,cols3]
+    names(df_ch3)<- c("length", "unsat", names(df)[grep("_", names(df))]) 
+    df2<- rbind(df2, df_ch3)
+  }
+  df2
+}
+
+byFAlist1<- lapply(satlist1 , FAsplit)
+byFAlist2<- lapply(byFAlist1, scal2, exclude= c("length"))
+
+FAs<- byFAlist1[["PC"]]
+
+desat.index<- function(df, exclude=c()){
+  ## function takes df with following columns
+  ### Samples with lipid quantity measurements
+  ### each row is one lipid measurement
+  ### column named "unsat" containing number of double bonds in that lipid
+  ## calculates desaturation index for each sample
+  ## allows for exclusion of columns from calculation
+  
+  exclude2<- c("unsat", exclude)  #vector of columns to exclude from calculation
+  excluded<- select(df, one_of(exclude2))   # df of excluded columns
+  include<- names(df)[!(names(df)%in% exclude2)]  # vector of columns to include
+  DAT<- select(df, one_of(include))  #df of columns of interest
+  excluded$unsat<- as.numeric(excluded$unsat)
+  DAT2<- sweep(DAT, 1, excluded$unsat, "*")
+  Vec1<- colMeans(DAT2)
+  names(Vec1)<- names(DAT2)
+  Vec1
+}
+
+
+DesatIndex1<- vapply(byFAlist2, desat.index, exclude= c("length"), FUN.VALUE = numeric(n))
+DesatIndex2<- data.frame(DesatIndex1)
+lipids<- names(DesatIndex2)
+DesatIndex2$Sample<- row.names(DesatIndex2)
+
+
+sSTD_Veh<- grep("S-STD_Veh" , DesatIndex2$Sample, value = TRUE)
+sSTD_SCDi<- grep("S-STD_SCDi" , DesatIndex2$Sample, value = TRUE)
+
+sDOX_Veh<- grep("S-DOX_Veh" , DesatIndex2$Sample, value = TRUE)
+sDOX_SCDi<- grep("S-DOX_SCDi" , DesatIndex2$Sample, value = TRUE)
+
+rSTD_Veh<- grep("R-STD_Veh" , DesatIndex2$Sample, value = TRUE)
+rSTD_SCDi<- grep("R-STD_SCDi" , DesatIndex2$Sample, value = TRUE)
+
+rDOX_Veh<- grep("R-DOX_Veh" , DesatIndex2$Sample, value = TRUE)
+rDOX_SCDi<- grep("R-DOX_SCDi" , DesatIndex2$Sample, value = TRUE)
+lipids2<- lipids[!(lipids %in% c("Cer", "ChE", "DG", "PG", "PI", "PS", "PE", "SM"))]
+
+desat.effect<- function(df, control, treatment, lipids){
+  df_control<- filter(df, Sample %in% control) %>% select(one_of(lipids))
+  df_treat<- filter(DesatIndex2, Sample %in% treatment) %>% select(one_of(lipids))
+  df_diff<- sweep(df_treat, 2, colMeans(df_control), "-")
+  long<- gather(df_diff)
+  long$value<- long$value*1000
+  long<- filter(long, key %in% lipids)
+  p<- ggplot(long, aes(x=key, y=value))+ geom_boxplot()
+  p
+}
+# desat.effect(DesatIndex2, rSTD_Veh, rSTD_SCDi) + ggtitle("Effect of SCDi under R condition")
+# desat.effect(DesatIndex2, sSTD_Veh, sSTD_SCDi) + ggtitle("SCDi effect under S condition")
+# desat.effect(DesatIndex2, sDOX_Veh, sDOX_SCDi) + ggtitle("SCDi effect under S condition after DGAT knockdown")
+# desat.effect(DesatIndex2, rDOX_Veh, rDOX_SCDi) + ggtitle("SCDi effect under R condition after DGAT knockdown")
+# 
+# desat.effect(DesatIndex2, rSTD_Veh, rDOX_Veh) + ggtitle("Effect of DGAT knockdown under R condition")
+# desat.effect(DesatIndex2, sSTD_Veh, sDOX_Veh) + ggtitle("Effect of DGAT knockdown under S condition")
+
+
+##removing some lipid species
+desat.effect(DesatIndex2, rSTD_Veh, rSTD_SCDi, lipids = lipids2) + ggtitle("Effect of SCDi under R condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+
+desat.effect(DesatIndex2, sSTD_Veh, sSTD_SCDi, lipids = lipids2) + ggtitle("SCDi effect under S condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+
+
+
+# desat.effect(DesatIndex2, sDOX_Veh, sDOX_SCDi, lipids = lipids2) + ggtitle("SCDi effect under S condition after DGAT knockdown")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+# desat.effect(DesatIndex2, rDOX_Veh, rDOX_SCDi, lipids = lipids2) + ggtitle("SCDi effect under R condition after DGAT knockdown")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+# 
+# desat.effect(DesatIndex2, rSTD_Veh, rDOX_Veh, lipids = lipids2) + ggtitle("Effect of DGAT knockdown under R condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+# desat.effect(DesatIndex2, sSTD_Veh, sDOX_Veh, lipids = lipids2) + ggtitle("Effect of DGAT knockdown under S condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+
+
+rSCDi<-  desat.effect(DesatIndex2, rSTD_Veh, rSTD_SCDi, lipids = lipids2) + ggtitle("Effect of SCD1 inhibition \nunder 5% serum growth conditions")+  theme_bw() +labs(y="Relative change in \nindex of desaturation", x= "Lipid Species")+ coord_cartesian(ylim=c(-2, 0))+ geom_hline(aes(yintercept=0))+ theme(plot.title=element_text(size=rel(0.8)))
+#+theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=20),
+ #       axis.title.y=element_text(size = 25), axis.text.y=element_text(size=20))
+rSCDi
+sSCDi<-  desat.effect(DesatIndex2, sSTD_Veh, sSTD_SCDi, lipids = lipids2) + ggtitle("Effect of SCD1 inhibition \nunder 0.5% serum growth conditions")+  theme_bw() +labs(y="Relative change in \nindex of desaturation", x= "Lipid Species")+ coord_cartesian(ylim=c(-2, 0))+ geom_hline(aes(yintercept=0))+ theme(plot.title=element_text(size=rel(0.8)))
+sSCDi
+#################################################################################
+##making figure here
+# ggsave("./20160127/rSCDi.pdf", plot = rSCDi, width=3, height=4, useDingbats=FALSE)
+# ggsave("./20160127/sSCDi.pdf", plot = sSCDi, width=3, height=4, useDingbats=FALSE)
+#################################################################################
+
+# ggsave("./20160127/rSCDi2.pdf", plot = rSCDi, width=2, height=4, useDingbats=FALSE)
+# ggsave("./20160127/sSCDi2.pdf", plot = sSCDi, width=2, height=4, useDingbats=FALSE)
 
