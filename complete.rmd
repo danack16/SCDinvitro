@@ -1,5 +1,5 @@
 ---
-title: "Complete Lipid saturation2"
+title: "Complete Lipid saturation"
 author: "Dan Ackerman"
 date: "December 14, 2015"
 output: html_document
@@ -9,6 +9,7 @@ Attempting to create dataframe containing full results of August 2015 analysis o
 
 First step, creating combined dataframe. (as previously)
 ```{r, warning = FALSE}
+require(dplyr); require(ggplot2)
 setwd("C:/R/Aug2015")
 dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
 dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
@@ -21,8 +22,8 @@ rep3<-merge(rep1, rep2, by="Label")
 colnames(dat3)<-c(colnames(dat3)[1], paste0("S-", colnames(dat3[2:21])))
 colnames(rep3)<-c(colnames(rep3)[1], paste0("R-", colnames(rep3[2:20])))
 comb1<-merge(dat3, rep3, by="Label")
-n<- length(grep("_", names(comb1)))
 library(stringr)
+n<- length(grep("_", names(comb1)))
 ```
 
 Next, trying to extract different patterns for different lipids.
@@ -79,7 +80,7 @@ CL.split<- function(df, cl){
 
 
 satlist1<- Map(CL.split, liplist2, chain_no) #applying function to list
-#c<-satlist1[["PC"]]
+# b<-satlist1[["TG"]]
 
  
 ```
@@ -119,8 +120,6 @@ Next, I would like to divide each value by the total amount of that particular l
 ```{r}
 # scaling each sample to look at distribution of each lipid as percentage shift
 # does not take into account changes in abundance of different lipid species across groups
-require(dplyr)
-
 
 scal<- function(DAT){
   x<-DAT$unsat
@@ -132,7 +131,6 @@ scal<- function(DAT){
 }
 satlist3<- lapply(satlist2, scal)
 #p1<- satlist3[["TG"]]
-
 
 scal2<- function(df, exclude = c()){
   ##df must contain column named "unsat"
@@ -146,19 +144,6 @@ scal2<- function(df, exclude = c()){
   df3[order(df3$unsat),]
 
   }
-satlist3<- lapply(satlist2, scal)
-# p1<- satlist2[["TG"]]
-
-
-
-# ## testing new scal2() function
-# exclude= c(names(p1)[5:7])
-# # exclude2<- c("unsat", exclude)
-# p2<- scal(p1)
-# p3<-     scal2(p1, exclude =exclude)
-# apply(p3, 2, sum)
-# identical(p2, p3)
-# names(p1)%in% exclude2
 ```
 
 Next, center to look at effect of a treatment on distribution as shift
@@ -215,6 +200,7 @@ order1<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi",
 exclude1<- c()
 plot_list1<- lapply(R_centlist, diff.plot, exclude1, order1)
 # plot_list1[["TG"]]
+
 
 for (i in names(plot_list1)){
   plot_list2<- vector("list", length(names(plot_list1)))
@@ -519,3 +505,120 @@ sSCDi
 # ggsave("./20160127/rSCDi2.pdf", plot = rSCDi, width=2, height=4, useDingbats=FALSE)
 # ggsave("./20160127/sSCDi2.pdf", plot = sSCDi, width=2, height=4, useDingbats=FALSE)
 
+
+```
+#############################################################################################
+
+#############################################################################################
+
+In order to create a figure showing changes in the abundance of all lipid types, create a function that summarizes a list containing all raw data into a dataframe containing the mean abundance for each lipid type (rows) for each sample (columns). 
+
+Once this dataset is available, a function that creates a heatmap of changes in abundance for each pairwise comparison is required.
+
+Given that identifying and removing outliers was critical for the accurate assessment of TG abundance, an improvement to this function would be one that automates outlier identification and censoring for this dataset. THis function could then be applied throughout the analysis. 
+
+```{r}
+
+string<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi", 
+           "S-STD_Veh", "S-STD_SCDi", "S-DOX_Veh", "S-DOX_SCDi")
+
+
+mk.names<- function(string, df){
+  # uses grep string to identify all column names in a dataframe that contain this term
+  # takes dataframe and vector of character strings corresponding to groupings
+  # output is a list. name of list elements corresponds to group, contents to samples in that group
+  
+    out1<- vector("list", length = length(string))
+  for (i in 1:length(string)){
+    x <-  names(df)[grep(string[i], names(df))]
+    out1[[i]]<- x
+    names(out1)[i]<- string[i]
+  }
+  out1
+  
+}
+
+names1<- mk.names(string = string, satlist1[["TG"]])
+
+
+abund<- function(df, exclude=c()){
+  ## df: dataframe containg raw abundance for each lipid (each row = 1 lipid, each column= one sample). 
+  ## exclude: columns to exclude from output. Auto excludes "Label" column, which contains lipid names
+  ## function operation
+    ### take column means and copy into a dataframe
+      #### structure of this dataframe: 
+      #### columns are replicate names
+      #### each row corresponds to different lipid type
+    ###output this dataframe
+  exclude2<- c("Label", exclude)
+  excluded<- select(df, one_of(exclude2))
+  included<- names(df)[!(names(df)%in% exclude2)] #vector of included columns
+  df2<- select(df, one_of(included))
+  colSums(df2)
+   # df2 
+}
+
+
+abundance<- t(as.data.frame(sapply(liplist2, abund)))  #use vapply instead?
+#abundance2<- scale(abundance, center = FALSE, scale = colMeans((abundance)))
+abundance2<- sweep(abundance, 2, colSums(abundance), "/") ##maybe need to do this after adding group together?
+
+group.mean<- function(vec, df){
+  ## takes dataframe, subsets only columns included in "vec"
+  ## calculates rowMeans for reduced dataframe
+  df2<- df[, colnames(df) %in% vec]
+  mns<- rowMeans(df2)
+  mns
+}
+
+# 
+# abundance3<- vapply(names1, group.mean, abundance2, FUN.VALUE = numeric(nrow(abundance2)))
+# abundance4<- sweep(abundance3, 1, abundance3[,1], "/")
+# abundance5<- as.data.frame(abundance4) #as.data.frame(abundance4[, 2:ncol(abundance4)])
+# abundance5$Lipid<- c(rownames(abundance5))
+# long_abundance<- gather(abundance5, key = Group, value= Measurement, 1:8)
+
+
+
+ht.map<- function(names, df, ctrl_group){
+  ## df containing each sample in a differnet row, with total abundance of each lipid type in each column
+  ## names: list of vectors corresponding to sample groups. name of vector is group name, elements of vector are replicates of that group. 
+    ### each dataframe, for loop over elements of "names"
+    ### identify columns corresponding to elements of names vector
+  
+df2<- vapply(names, group.mean, df, FUN.VALUE = numeric(nrow(df)))
+if (!ctrl_group %in% colnames(df2)){
+  stop("Incorrect group name for control group")
+  }
+  ctrl<- df2[,colnames(df2)==ctrl_group]
+  df3<- sweep(df2, 1, ctrl, "/")
+  df4<- as.data.frame(df3) #as.data.frame(abundance4[, 2:ncol(abundance4)])
+  df4$Lipid<- c(rownames(df4))
+  long_abundance<- gather(df4, key = Group, value= Measurement, 1:(ncol(df4)-1))
+  long_abundance
+}
+
+long_abundance<- ht.map(names = names1, df= abundance, ctrl_group = "R-STD_Veh") # does not normalize each sample so sum = 1
+long_abundance2<- ht.map(names = names1, df= abundance2, ctrl_group = "R-STD_Veh") # each sample normalized so sum = 1
+long_abundance3<- ht.map(names = names1, df= abundance2, ctrl_group = "S-STD_Veh") # each sample normalized so sum = 1
+
+
+
+o<- ggplot(long_abundance, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
+o<- o + scale_fill_gradient(low = "white", high = "steelblue") 
+o
+
+
+p<- ggplot(long_abundance, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
+p<- p + scale_fill_gradient(low = "white", high = "steelblue") 
+p<- p+ theme_grey() + labs(x = "", y = "") + scale_x_discrete(expand = c(0, 0)) 
+p<- p+ scale_y_discrete(expand = c(0, 0)) #+ opts(legend.position = "none", axis.ticks = theme_blank(), 
+                                           #      axis.text.x = theme_text(size = base_size *0.8, angle = 330, 
+                                            #                              hjust = 0, colour = "grey50"))
+p
+
+# need to introduce procedure to censor ouliers further upstream to be consistent with previous analyses!
+  
+
+
+```
