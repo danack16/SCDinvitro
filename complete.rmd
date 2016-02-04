@@ -677,5 +677,8 @@ ggplot(df2, aes(x=Group, y=Measurement))
 # nms<- names1
 
 f<- lip.abund(df=as.data.frame(abundance), lip="TG", groups = c("R-STD_Veh", "S-STD_Veh"), nms = names1)
+f<- f+ geom_boxplot()+ labs(x="", y="Triglyceride abundance") + theme_bw()
+f<- f+ coord_cartesian(ylim=c(0, 25))+theme(panel.border= element_blank(), axis.line = element_line(colour = "black"))
+f<- f  + scale_x_discrete(labels=c("5% serum", "0.5% serum"))
 
-f+ geom_boxplot()
+f
