@@ -585,6 +585,11 @@ ht.map<- function(names, df, ctrl_group){
   ## names: list of vectors corresponding to sample groups. name of vector is group name, elements of vector are replicates of that group. 
     ### each dataframe, for loop over elements of "names"
     ### identify columns corresponding to elements of names vector
+    ### vapply group.mean function to df for each element of names and save as df2
+    ### df2 now contains all group means for each lipid type
+    ### take column corresponding to control group (ctrl_group), sweep df2 with those values
+    ### control group column now = 1, others show change relative to control
+    ### gather() to make long format, output long df
   
 df2<- vapply(names, group.mean, df, FUN.VALUE = numeric(nrow(df)))
 if (!ctrl_group %in% colnames(df2)){
@@ -599,8 +604,8 @@ if (!ctrl_group %in% colnames(df2)){
 }
 
 long_abundance<- ht.map(names = names1, df= abundance, ctrl_group = "R-STD_Veh") # does not normalize each sample so sum = 1
-long_abundance2<- ht.map(names = names1, df= abundance2, ctrl_group = "R-STD_Veh") # each sample normalized so sum = 1
-long_abundance3<- ht.map(names = names1, df= abundance2, ctrl_group = "S-STD_Veh") # each sample normalized so sum = 1
+# long_abundance2<- ht.map(names = names1, df= abundance2, ctrl_group = "R-STD_Veh") # each sample normalized so sum = 1
+# long_abundance3<- ht.map(names = names1, df= abundance2, ctrl_group = "S-STD_Veh") 
 
 
 
@@ -622,3 +627,55 @@ p
 
 
 ```
+
+
+Make figure comparing any named groups for any lipid type. 
+
+```{r}
+sem<- function(vec){
+  sm<- sd(vec)/sqrt(length(vec))
+}
+
+group.sem<- function(vec, df){
+  ## takes dataframe, subsets only columns included in "vec"
+  ## calculates rowMeans for reduced dataframe
+  df2<- df[, colnames(df) %in% vec]
+  sem<- apply(df, 1, sem)
+  sem
+}
+
+# vec<- names1[["R-STD_Veh"]]
+# df<- abundance
+lipids
+
+
+lip.abund<- function(df, lip, groups, nms= names1){
+  ## takes dataframe, subsets groups = vector of character strings corresponding to groups of interest within names. 
+  ### dataframe: rows= total abundance by lipid type, columns = samples
+  ## takes names, a list of character strings. Element names = group names, element contents = samples within that group
+  ## takes lip, a character string corresponding to one of the following lipids present as row in df
+  ## extracts abundance of lipid selected through "lip" for groups selected in "groups"
+  ## outputs ggplot object
+  
+  samples<- c()
+  names2<- nms[groups]
+  for(i in 1:length(groups)){
+    samples<- c(samples, names2[[i]])
+  }
+  df2<- select(df, one_of(samples))%>% add_rownames(var = "lipid")%>%filter(lipid==lip)%>% gather(Sample, Measurement, 2:(length(samples)+1))
+  df2$Group<- NA
+  for (i in 1:length(groups)){
+#     grp<-groups[i]
+#     gr_samples<- 
+    df2$Group[df2$Sample %in% names2[[i]]]<- names(names2)[i]
+    }
+ggplot(df2, aes(x=Group, y=Measurement))  
+}
+# df<- as.data.frame(abundance)
+# lip<- "TG"
+# groups<- c("R-STD_Veh", "S-STD_Veh")
+# nms<- names1
+
+f<- lip.abund(df=as.data.frame(abundance), lip="TG", groups = c("R-STD_Veh", "S-STD_Veh"), nms = names1)
+
+f+ geom_boxplot()
