@@ -477,9 +477,9 @@ desat.effect<- function(df, control, treatment, lipids){
 
 
 ##removing some lipid species
-desat.effect(DesatIndex2, rSTD_Veh, rSTD_SCDi, lipids = lipids2) + ggtitle("Effect of SCDi under R condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
-
-desat.effect(DesatIndex2, sSTD_Veh, sSTD_SCDi, lipids = lipids2) + ggtitle("SCDi effect under S condition")+ coord_cartesian(ylim=c(-0.002, 0.00125))
+# desat.effect(DesatIndex2, rSTD_Veh, rSTD_SCDi, lipids = lipids2) + ggtitle("Effect of SCDi under R condition")+ coord_cartesian(ylim=c(-2, 0.01))
+# 
+# desat.effect(DesatIndex2, sSTD_Veh, sSTD_SCDi, lipids = lipids2) + ggtitle("SCDi effect under S condition")+ coord_cartesian(ylim=c(-2, 0.01))
 
 
 
@@ -586,9 +586,9 @@ ht.map<- function(names, df, ctrl_group){
     ### each dataframe, for loop over elements of "names"
     ### identify columns corresponding to elements of names vector
   
-df2<- vapply(names, group.mean, df, FUN.VALUE = numeric(nrow(df)))
-if (!ctrl_group %in% colnames(df2)){
-  stop("Incorrect group name for control group")
+  df2<- vapply(names, group.mean, df, FUN.VALUE = numeric(nrow(df)))
+  if (!ctrl_group %in% colnames(df2)){
+    stop("Incorrect group name for control group")
   }
   ctrl<- df2[,colnames(df2)==ctrl_group]
   df3<- sweep(df2, 1, ctrl, "/")
@@ -598,27 +598,135 @@ if (!ctrl_group %in% colnames(df2)){
   long_abundance
 }
 
+
 long_abundance<- ht.map(names = names1, df= abundance, ctrl_group = "R-STD_Veh") # does not normalize each sample so sum = 1
-long_abundance2<- ht.map(names = names1, df= abundance2, ctrl_group = "R-STD_Veh") # each sample normalized so sum = 1
-long_abundance3<- ht.map(names = names1, df= abundance2, ctrl_group = "S-STD_Veh") # each sample normalized so sum = 1
+# long_abundance2<- ht.map(names = names1, df= abundance2, ctrl_group = "R-STD_Veh") # each sample normalized so sum = 1
+# long_abundance3<- ht.map(names = names1, df= abundance2, ctrl_group = "S-STD_Veh") # each sample normalized so sum = 1
 
 
+## changing order of lipids
+lips<-unique(long_abundance$Lipid)
+lips2<- c(lips[c(1,  8,  7,  6,  5,  9,  4,  3, 10,  2)])
+long_abundance$Lipid<- factor(long_abundance$Lipid, levels = lips2)
 
-o<- ggplot(long_abundance, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
-o<- o + scale_fill_gradient(low = "white", high = "steelblue") 
-o
+# o<- ggplot(long_abundance3, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
+# o<- o + scale_fill_gradient(low = "white", high = "steelblue") 
+# o
 
 
 p<- ggplot(long_abundance, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
 p<- p + scale_fill_gradient(low = "white", high = "steelblue") 
 p<- p+ theme_grey() + labs(x = "", y = "") + scale_x_discrete(expand = c(0, 0)) 
-p<- p+ scale_y_discrete(expand = c(0, 0)) #+ opts(legend.position = "none", axis.ticks = theme_blank(), 
-                                           #      axis.text.x = theme_text(size = base_size *0.8, angle = 330, 
-                                            #                              hjust = 0, colour = "grey50"))
+p<- p+ scale_y_discrete(expand = c(0, 0)) 
+
 p
 
 # need to introduce procedure to censor ouliers further upstream to be consistent with previous analyses!
-  
+# censoring two samples based on being extreme outliers for DG abundance (see below)
+# would it be better to censor those samples only for DG measurements?
+# need more formalized test for outliers
+
+censor<- c("R-STD_SCDi_5", "R-STD_Veh_5")
+censored<- setdiff(names(as.data.frame(abundance)), censor)
+abundance_cens<- select(as.data.frame(abundance), one_of(censored))
+long_abundance_cens<- ht.map(names = names1, df= abundance_cens, ctrl_group = "R-STD_Veh")
+long_abundance_cens$Lipid<- factor(long_abundance_cens$Lipid, levels = lips2)
+p_c<- ggplot(long_abundance_cens, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
+p_c<- p_c + scale_fill_gradient(low = "white", high = "steelblue") 
+p_c<- p_c+ theme_grey() + labs(x = "", y = "") + scale_x_discrete(expand = c(0, 0)) 
+p_c<- p_c+ scale_y_discrete(expand = c(0, 0)) 
+
+
+
+
+
+#################################################################################
+##making figure here
+ggsave("./20160205/heat_cens.pdf", plot = p_c, width=10, height=7, useDingbats=FALSE)  
 
 
 ```
+
+Make figure comparing any named groups for any lipid type.
+
+```{r}
+sem<- function(vec){
+  sm<- sd(vec)/sqrt(length(vec))
+}
+
+group.sem<- function(vec, df){
+  ## takes dataframe, subsets only columns included in "vec"
+  ## calculates rowMeans for reduced dataframe
+  df2<- df[, colnames(df) %in% vec]
+  sem<- apply(df, 1, sem)
+  sem
+}
+
+# vec<- names1[["R-STD_Veh"]]
+# df<- abundance
+
+
+
+lip.abund<- function(lip,df, groups, nms= names1){
+  ## takes dataframe, subsets groups = vector of character strings corresponding to groups of interest within names. 
+  ### dataframe: rows= total abundance by lipid type, columns = samples
+  ## takes names, a list of character strings. Element names = group names, element contents = samples within that group
+  ## takes lip, a character string corresponding to one of the following lipids present as row in df
+  ## extracts abundance of lipid selected through "lip" for groups selected in "groups"
+  ## outputs ggplot object
+
+  samples<- c()
+  names2<- nms[groups]
+  for(i in 1:length(groups)){
+    samples<- c(samples, names2[[i]])
+  }
+  df2<- select(df, one_of(samples))%>% add_rownames(var = "lipid")%>%filter(lipid==lip)%>% gather(Sample, Measurement, 2:(length(samples)+1))
+  df2$Group<- NA
+  for (i in 1:length(groups)){
+#     grp<-groups[i]
+#     gr_samples<- 
+    df2$Group[df2$Sample %in% names2[[i]]]<- names(names2)[i]
+    }
+
+  df3<- df2%>%group_by(Group)%>% mutate(lQntl = quantile(Measurement, probs = 0.25, na.rm = TRUE),
+                uQntl = quantile(Measurement, probs = 0.75, na.rm = TRUE), lBound = lQntl - 1.5 * (uQntl - lQntl),
+                uBound = uQntl + 1.5 * (uQntl - lQntl))
+  df3$OL<-df3$Sample
+  df3$OL[!(df3$Measurement<=df3$lBound |df3$Measurement>=df3$uBound)]<- NA
+
+  
+  ggplot(df3, aes(x=Group, y=Measurement))  +geom_boxplot() +geom_text(aes(label = OL), size = 3,
+            position = position_jitter(width = 0.1))
+}
+
+# df<- as.data.frame(abundance)
+# lip<- "DG"
+# groups<- c("R-STD_Veh", "R-STD_SCDi")
+# nms<- names1
+# 
+
+
+lipids_list<-as.list(lipids)
+names(lipids_list)<- lipids
+
+ser_ab_effect<- lapply(lipids_list, lip.abund, df=as.data.frame(abundance), groups = c("R-STD_Veh", "S-STD_Veh"), nms = names1)
+# ser_ab_effect[["DG"]] + theme_bw()+ labs(x="", y="abundance")
+
+
+ab_effects <- lapply(lipids_list, lip.abund, df=as.data.frame(abundance), groups = names(names1), nms = names1)
+ 
+f<- ser_ab_effect[["TG"]]+ geom_boxplot()+ labs(x="", y="Triglyceride abundance") + theme_bw()
+f<- f+ coord_cartesian(ylim=c(0, 25))+theme(panel.border= element_blank(), axis.line = element_line(colour = "black"))
+f<- f  + scale_x_discrete(labels=c("5% serum", "0.5% serum"))
+ 
+# 
+# #################################################################################
+# ##making figure here
+# #ggsave("./20160205/TGabund2.pdf", plot = f, width=4, height=7, useDingbats=FALSE)
+# 
+# 
+for (i in 1:length(ser_ab_effect)){
+  fig1<- ab_effects[[i]]+ geom_boxplot()+ labs(x="", y=paste(names(ser_ab_effect)[i], "abundance")) + theme_bw()
+  fig1<- fig1 + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  print(fig1)
+  }
