@@ -561,13 +561,13 @@ abund<- function(df, exclude=c()){
 
 abundance<- t(as.data.frame(sapply(liplist2, abund)))  #use vapply instead?
 #abundance2<- scale(abundance, center = FALSE, scale = colMeans((abundance)))
-abundance2<- sweep(abundance, 2, colSums(abundance), "/") ##maybe need to do this after adding group together?
+#abundance2<- sweep(abundance, 2, colSums(abundance), "/") ##maybe need to do this after adding group together?
 
 group.mean<- function(vec, df){
   ## takes dataframe, subsets only columns included in "vec"
   ## calculates rowMeans for reduced dataframe
   df2<- df[, colnames(df) %in% vec]
-  mns<- rowMeans(df2)
+  mns<- rowMeans(df2, na.rm = TRUE)
   mns
 }
 
@@ -642,9 +642,54 @@ p_c<- p_c+ scale_y_discrete(expand = c(0, 0))
 
 #################################################################################
 ##making figure here
-ggsave("./20160205/heat_cens.pdf", plot = p_c, width=10, height=7, useDingbats=FALSE)  
+#ggsave("./20160205/heat_cens.pdf", plot = p_c, width=10, height=7, useDingbats=FALSE)  
+```
+
+Problem here is that entire sample was censored even though it only seems to be an outlier when it comes to DG measurements. Now attempting to censor only DG values. Attempting to replace relevant values with NAs in liplist2 list of dataframes
+
+```{r}
+df<-as.data.frame(abundance)
+to_censor<- c("R-STD_SCDi_5", "R-STD_Veh_5")
+df[,to_censor]<- NA
+to_censor[1]==names(df)
+
+all(to_censor %in% names(df))
+
+samp.cens<- function(df, to_censor){
+  ## take df with samples in columns according to sample name and each row = different lipid
+  ## take vector of sample names that need to be removed
+  ## output dataframe with values in those columns replaced by NA
+  if (!(all(to_censor %in% names(df)))){
+    stop("Incorrect sample names")
+  }
+  df[,to_censor]<- NA
+  df
+  #cens<- setdiff(names(df), to_censor)
+  #   for (i in 1:length(to_censor)){
+#     
+#   }
+}
+
+to_censor<- vector("list", length = length(liplist2))
+names(to_censor)<- names(liplist2)
+to_censor[["DG"]]<- c("R-STD_SCDi_5", "R-STD_Veh_5")
+to_censor[["TG"]]<- c("R-STD_SCDi_5")  # also censoring this sample for TGs. Really changes outcome, far above others
+                                       # perform statistical test for outlier
+
+liplist3<- Map(samp.cens, liplist2, to_censor)
+abundance_cens2<- t(as.data.frame(sapply(liplist3, abund)))
+
+## now making heatmap with DG values censored only
+long_abundance_cens2<- ht.map(names = names1, df= abundance_cens2, ctrl_group = "R-STD_Veh")
 
 
+
+long_abundance_cens2$Lipid<- factor(long_abundance_cens2$Lipid, levels = lips2)
+p_c2<- ggplot(long_abundance_cens2, aes(Group, Lipid))  + geom_tile(aes(fill = Measurement), colour = "white")
+p_c2<- p_c2 + scale_fill_gradient(low = "white", high = "steelblue") 
+p_c2<- p_c2+ theme_grey() + labs(x = "", y = "") + scale_x_discrete(expand = c(0, 0)) 
+p_c2<- p_c2+ scale_y_discrete(expand = c(0, 0)) 
+p_c2
 ```
 
 Make figure comparing any named groups for any lipid type.
