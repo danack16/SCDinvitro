@@ -458,6 +458,8 @@ rDOX_SCDi<- grep("R-DOX_SCDi" , DesatIndex2$Sample, value = TRUE)
 lipids2<- lipids[!(lipids %in% c("Cer", "ChE", "DG", "PG", "PI", "PS", "PE", "SM"))]
 
 desat.effect<- function(df, control, treatment, lipids){
+  # calculates change in desaturation index between a control and a treatment group
+  # plots boxplot for selected lipids 
   df_control<- filter(df, Sample %in% control) %>% select(one_of(lipids))
   df_treat<- filter(DesatIndex2, Sample %in% treatment) %>% select(one_of(lipids))
   df_diff<- sweep(df_treat, 2, colMeans(df_control), "-")
@@ -524,7 +526,7 @@ string<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi",
 
 
 mk.names<- function(string, df){
-  # uses grep string to identify all column names in a dataframe that contain this term
+  # uses grep string to identify all column names in a dataframe that contain each string in vector "string"
   # takes dataframe and vector of character strings corresponding to groupings
   # output is a list. name of list elements corresponds to group, contents to samples in that group
   
@@ -653,7 +655,7 @@ to_censor<- c("R-STD_SCDi_5", "R-STD_Veh_5")
 df[,to_censor]<- NA
 to_censor[1]==names(df)
 
-all(to_censor %in% names(df))
+#all(to_censor %in% names(df))
 
 samp.cens<- function(df, to_censor){
   ## take df with samples in columns according to sample name and each row = different lipid

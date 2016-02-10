@@ -1,0 +1,204 @@
+---
+title: "abbreviated full assessment"
+author: "Dan Ackerman"
+date: "February 9, 2016"
+output: html_document
+---
+
+
+First step, creating combined dataframe. (as previously)
+```{r, warning = FALSE, echo=FALSE}
+#required packages
+require(dplyr); require(ggplot2); require(stringr); require(magrittr); require(data.table); require(tidyr)
+# required functions
+setwd("C:/R/Aug2015")
+source("./2016Ana/functions.R")
+
+
+
+dat1<-read.table("Input_data_InVitro_0.5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+dat2<-read.table("Input_data_InVitro_0.5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+rep1<-read.table("Input_data_InVitro_5%_DMSO_DOXvsVehicle.csv", header=TRUE, sep=",")
+rep2<-read.table("Input_data_InVitro_5%_SCDi_DOXvsVehicle.csv", header=TRUE, sep=",")
+
+dat3<-merge(dat1, dat2, by="Label")
+rep3<-merge(rep1, rep2, by="Label")
+colnames(dat3)<-c(colnames(dat3)[1], paste0("S-", colnames(dat3[2:21])))
+colnames(rep3)<-c(colnames(rep3)[1], paste0("R-", colnames(rep3[2:20])))
+comb1<-merge(dat3, rep3, by="Label")
+
+n<- length(grep("_", names(comb1)))
+```
+
+
+Following section aims at identifying extreme outliers graphically (statistical methods to follow). 
+
+```{r, echo=FALSE}
+
+# classifying lipids by number of FA chains
+CL1<- c("ChE")
+CL2<- c("PC", "PS", "SM", "Cer", "DG", "PE", "PG", "PI")
+CL3<- c("TG")
+
+
+# creating strings for str_match function to interpret lipid name
+  cl1_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\)"
+  cl2_ch<- "^(.*)\\(([:alpha:]{0,1})([0-9]{1,2}):([0-9])([ep]{0,1})\\/([0-9]{1,2}):([0-9])\\)"
+  cl3_ch<- "^(.*)\\(([0-9]{1,2}):([0-9])\\/([0-9]{1,2}):([0-9])/([0-9]{1,2}):([0-9])\\)"
+
+# creating vector of strings corresponding to experimental groups in the data
+groups1<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi", 
+           "S-STD_Veh", "S-STD_SCDi", "S-DOX_Veh", "S-DOX_SCDi")
+
+  
+## generating list of dataframes split by lipid type. Element names= lipid types
+##Each dataframe contains abundance data for all lipids of that type
+lipidtype<- as.data.frame(str_match(comb1$Label, "^(.*)\\((.*)"))
+comb2<- merge(comb1, lipidtype[,1:2], by.x= "Label", by.y = "V1")
+liplist<- split(comb2, comb2$V2) %>% lapply(del.V2)
+
+# creating vector of chain lengths by lipid type
+chain_no<- c(rep(NA, length(liplist)))
+names(chain_no)<-names(liplist)
+chain_no[names(liplist) %in% CL1]<- "CL1"
+chain_no[names(liplist) %in% CL2]<- "CL2"
+chain_no[names(liplist) %in% CL3]<- "CL3"
+
+liplist2<- Map(CL.split, liplist, chain_no)  # evaluates lipid names into components
+
+
+
+
+# creating list. name of list elements corresponds to group, contents to samples in that group
+names1<- mk.names(string = groups1, liplist[["TG"]])
+
+# generating datframe of abundances of all lipid types across samples.
+abundance<- t(as.data.frame(vapply(liplist, abund, numeric(n))))
+
+##uncensored plots
+lipids<- row.names(abundance)
+lipids_list<-as.list(lipids)
+names(lipids_list)<- lipids
+
+ab_effects <- lapply(lipids_list, lip.abund, df=as.data.frame(abundance), groups = names(names1), nms = names1)
+for (i in 1:length(ab_effects)){
+  fig1<- ab_effects[[i]]+ geom_boxplot()+ labs(x="", y=paste(names(ser_ab_effect)[i], "abundance")) + theme_bw()
+  fig1<- fig1 + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  print(fig1)
+  }
+
+# need to censor certain outlier values
+to_censor<- vector("list", length = length(liplist2))
+names(to_censor)<- names(liplist2)
+to_censor[["DG"]]<- c("R-STD_SCDi_5", "R-STD_Veh_5")
+to_censor[["TG"]]<- c("R-STD_SCDi_5")  # also censoring this sample for TGs. Really changes outcome, far above others
+                                       # perform statistical test for outlier
+liplist3<- Map(samp.cens, liplist, to_censor)
+abundance_cens2<- t(as.data.frame(sapply(liplist3, abund)))
+
+
+
+
+#censored plots
+ab_effects_cens <- lapply(lipids_list, lip.abund, df=as.data.frame(abundance_cens2), groups = names(names1), nms = names1)
+for (i in 1:length(ab_effects_cens)){
+  fig1<- ab_effects_cens[[i]]+ geom_boxplot()+ labs(x="", y=paste(names(ser_ab_effect)[i], "abundance")) + theme_bw()
+  fig1<- fig1 + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  print(fig1)
+  }
+
+
+# #################################################################################
+# ##making figure here
+# ser_ab_effect<- lapply(lipids_list, lip.abund, df=as.data.frame(abundance_cens2), groups = c("R-STD_Veh", "S-STD_Veh"), nms = names1)
+# ser_ab_effect[["DG"]] + theme_bw()+ labs(x="", y="abundance")
+# f<- ser_ab_effect[["TG"]]+ geom_boxplot()+ labs(x="", y="Triglyceride abundance") + theme_bw()
+# f<- f+ coord_cartesian(ylim=c(0, 25))+theme(panel.border= element_blank(), axis.line = element_line(colour = "black"))
+# f<- f  + scale_x_discrete(labels=c("5% serum", "0.5% serum"))
+# 
+
+# #ggsave("./20160205/TGabund2.pdf", plot = f, width=4, height=7, useDingbats=FALSE)
+# 
+# 
+```
+
+Next section aims at creating heatmaps of data including information on which samples to censor from above. 
+ 
+```{r}
+
+```
+
+Next, creating figures showing changes in saturation
+
+```{r}
+satlist<- Map(tot.unsat2, liplist2, chain_no)  # calculates total abundance for lipids of each saturation bin
+
+#can't use pipe because first argument of Map is function
+
+# scaling each sample to look at distribution of each lipid as percentage shift
+# does not take into account changes in abundance of different lipid species across groups
+satlist2<- lapply(satlist, scal)
+conts1<- names1[["R-STD_Veh"]]  #vector of control sample names
+R_centlist<- lapply(satlist2, centr, conts1)
+plot_list1<- lapply(R_centlist, diff.plot)
+order1<- c("R-STD_Veh", "R-STD_SCDi", "R-DOX_Veh", "R-DOX_SCDi", 
+           "S-STD_Veh", "S-STD_SCDi", "S-DOX_Veh", "S-DOX_SCDi")
+exclude1<- c()
+plot_list1<- lapply(R_centlist, diff.plot, exclude1, order1)
+
+plot_list2<- vector("list", length(names(plot_list1)))
+names(plot_list2)<- names(plot_list1)
+for (i in names(plot_list1)){
+  plot_list2[[i]]<-plot_list1[[i]]+ ggtitle(paste("Changes in saturation of", i, "species"))
+  }
+for (i in names(plot_list2)){
+  print(plot_list2[[i]])
+  }
+
+
+serum_effect<-TG_effects(satlist2, "R-STD_Veh", "S-STD_Veh")
+# TG_effects(satlist2, "R-STD_Veh", "R-DOX_Veh")
+# TG_effects(satlist2, "R-STD_Veh", "R-STD_SCDi")
+# TG_effects(satlist2, "R-DOX_Veh", "R-DOX_SCDi")
+# 
+# 
+# TG_effects(satlist2, "S-STD_Veh", "S-DOX_Veh")
+# TG_effects(satlist2, "S-STD_Veh", "S-STD_SCDi")
+# TG_effects(satlist2, "S-DOX_Veh", "S-DOX_SCDi")
+serum_effect3<- serum_effect +  scale_x_continuous(breaks=seq(0,9,1))+
+      scale_y_continuous(breaks=seq(-0.1,0.075,0.025))+
+      scale_fill_manual(values=c("#CCEEFF", "#FFDDDD"), guide=FALSE) +
+      geom_hline(aes(yintercept=0))+labs(y="Relative Change", x= "Double Bonds")+
+      coord_cartesian(xlim = c(0.5, 8.5), ylim=c(-0.075, 0.12))+
+      theme(axis.title.x=element_text(size = 25), axis.text.x=element_text(size=30),
+        axis.title.y=element_text(size = 25), axis.text.y=element_text(size=30))+
+      theme_bw() + geom_point(aes(size=ctrlmn, x= DBs, y=0.105), shape = 21, color= "black", fill= "cornsilk")+
+        scale_size_area(max_size=6.5, guide=FALSE)+
+        annotate("text", x=4.5, y=0.085, label= "Change in TG saturation", size=3)+
+        annotate("text", x=4.5, y=0.12, label= "Abundance", size=3)
+
+############ Figure generation######################################################
+#ggsave("./20160126/TG_serum_effect.pdf", plot = serum_effect3, width=3, height=4, useDingbats=FALSE)
+## used this to generate figure. Had to change plot thickness to 2 in illustrator
+##very important to use useDingbats=FALSE here for geom_point to be visible in Illustrator
+####################################################################################
+```
+
+
+Next section will create a "desaturation index" and look at changes in that index
+
+```{r}
+byFAlist2<- lapply(liplist2 , FAsplit)  %>% ##!! not using censored values
+            lapply(scal2, exclude= c("length"))
+DesatIndex2<- data.frame(vapply(byFAlist2, desat.index, exclude= c("length"), FUN.VALUE = numeric(n)))
+DesatIndex2$Sample<- row.names(DesatIndex2)
+lipids2<- lipids[!(lipids %in% c("Cer", "ChE", "DG", "PG", "PI", "PS", "PE", "SM"))]+
+
+  
+  rSCDi<-  desat.effect(DesatIndex2, names1[["R-STD_Veh"]], names1[["R-STD_SCDi"]], lipids = lipids2) + ggtitle("Effect of SCD1 inhibition \nunder 5% serum growth conditions")+  theme_bw() +labs(y="Relative change in \nindex of desaturation", x= "Lipid Species")+ coord_cartesian(ylim=c(-2, 0))+ geom_hline(aes(yintercept=0))+ theme(plot.title=element_text(size=rel(0.8)))
+rSCDi
+
+sSCDi<-  desat.effect(DesatIndex2, names1[["S-STD_Veh"]], names1[["S-STD_SCDi"]], lipids = lipids2) + ggtitle("Effect of SCD1 inhibition \nunder 0.5% serum growth conditions")+  theme_bw() +labs(y="Relative change in \nindex of desaturation", x= "Lipid Species")+ coord_cartesian(ylim=c(-2, 0))+ geom_hline(aes(yintercept=0))+ theme(plot.title=element_text(size=rel(0.8)))
+sSCDi
+```
